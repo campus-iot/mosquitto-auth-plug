@@ -1,4 +1,4 @@
-FROM alpine:3.9
+FROM golang:latest
 
 LABEL maintainer="Théo Lévesque <theo.levesque.024@gmail.com>"
 
@@ -6,18 +6,20 @@ ENV CGO_CFLAGS="-I/usr/local/include -fPIC"
 ENV CGO_LDFLAGS="-shared"
 
 RUN set -x && \
-    apk --no-cache add mosquitto libwebsockets c-ares openssl openssl-dev libuuid mosquitto-dev mosquitto-libs libwebsockets-dev c-ares-dev build-base go && \
-    apk --no-cache add --virtual build-deps git && \
-    git clone git://github.com/iegomez/mosquitto-go-auth.git && \
-    cd mosquitto-go-auth && \
-    go build -buildmode=c-archive go-auth.go && \
-    go build -buildmode=c-shared -o go-auth.so && \
-    install -s -m755 go-auth.so /usr/local/lib/ && \
-    apk del build-deps && rm -rf /var/cache/apk/*
-
-VOLUME ["/mosquitto/data", "/mosquitto/log"]
+    apt-get update && apt-get install -y git curl build-essential libc-ares-dev uuid-dev libwebsockets-dev libssl-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -L https://github.com/eclipse/mosquitto/archive/v1.5.8.tar.gz | tar xzv && \
+    cd mosquitto-1.5.8 && \
+    make -j "$(nproc)" WITH_WEBSOCKETS=yes WITH_DOCS=no && \
+    make install WITH_WEBSOCKETS=yes WITH_DOCS=no && \
+    groupadd mosquitto && \
+    useradd -s /sbin/nologin mosquitto -g mosquitto -d /var/lib/mosquitto && \
+    curl -L https://github.com/iegomez/mosquitto-go-auth/archive/0.2.0.tar.gz | tar xzv && \
+    cd mosquitto-go-auth-0.2.0 && \
+    make && \
+    install -s -m755 go-auth.so /usr/local/lib/
 
 COPY docker-entrypoint.sh /
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-CMD ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
+CMD ["/usr/local/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
